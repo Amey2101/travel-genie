@@ -2,13 +2,16 @@
 
 ## Current state
 
-This repository is a fresh scaffold with no application code yet. Verified facts:
+This repository is a scaffold with backend project configuration. Verified facts:
 
-- Single commit (`chore: initialize Travel Genie`) containing only an empty `README.md`.
-- No build system, package manifest, test/lint/format config, CI, or framework files exist yet.
+- Backend scaffold: FastAPI + Pydantic app with a `GET /health` endpoint, `pyproject.toml` (setuptools), and pytest tests in `backend/`.
+- `android/`, `docs/`, and the remaining backend packages are placeholders — no application logic, integrations, or client code yet.
 - Remote is `https://github.com/Amey2101/travel-genie.git`, working on `main`.
 
-There are no developer commands to run until tooling is added.
+Backend commands (run from `backend/` after `pip install -e ".[dev]"`):
+
+- Run: `uvicorn app.main:app --reload`
+- Test: `pytest`
 
 ## Product
 
