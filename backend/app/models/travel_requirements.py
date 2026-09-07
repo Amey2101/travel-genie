@@ -234,11 +234,13 @@ class ExtractionMetadata(BaseModel):
     """Provenance and confidence for the extraction step.
 
     ``extraction_confidence`` is a raw score — no fixed thresholds are
-    applied.  Thresholds will be determined empirically later.
+    applied.  Thresholds will be determined empirically later.  It is
+    ``None`` when the LLM provided no confidence value; confidence is
+    metadata only and never drives behavior.
     """
 
     original_user_message: str
-    extraction_confidence: float = Field(ge=0.0, le=1.0)
+    extraction_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     explicit_fields: list[str] = Field(default_factory=list)
     inferred_fields: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)

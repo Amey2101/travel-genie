@@ -380,6 +380,10 @@ class TestValidation:
                 extraction_confidence=1.5,
             )
 
+    def test_confidence_none_allowed(self) -> None:
+        meta = ExtractionMetadata(original_user_message="test")
+        assert meta.extraction_confidence is None
+
     def test_valid_confidence_boundaries(self) -> None:
         low = ExtractionMetadata(original_user_message="a", extraction_confidence=0.0)
         high = ExtractionMetadata(original_user_message="b", extraction_confidence=1.0)
