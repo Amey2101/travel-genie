@@ -53,8 +53,8 @@ def _reference_date_str(ref: datetime) -> str:
 class RequirementExtractionService:
     """Orchestrates LLM requirement extraction and deterministic transformation.
 
-    Flow: user message -> LLMClient structured output -> definite Python
-    transform -> ExtractionResult.
+    Flow: user message (optionally with prior conversation context) -> LLMClient
+    structured output -> definite Python transform -> ExtractionResult.
     """
 
     def __init__(
@@ -66,7 +66,18 @@ class RequirementExtractionService:
         self._client = client
         self._reference_datetime = reference_datetime
 
-    def extract(self, user_message: str) -> ExtractionResult:
+    def extract(
+        self,
+        user_message: str,
+        *,
+        context: list[str] | None = None,
+    ) -> ExtractionResult:
+        """Extract requirements from ``user_message``.
+
+        ``context`` carries prior user turns so a clarification answer can be
+        reconciled against facts already stated. It is purely additive: when
+        omitted, behaviour is identical to a single-message extraction.
+        """
         reference_datetime = (
             self._reference_datetime
             if self._reference_datetime is not None
@@ -75,9 +86,12 @@ class RequirementExtractionService:
         system_prompt = build_extraction_prompt(
             reference_date=_reference_date_str(reference_datetime)
         )
+        content = user_message
+        if context:
+            content = "\n".join([*context, user_message])
         request = LLMExtractionRequest(
             system_prompt=system_prompt,
-            user_message=user_message,
+            user_message=content,
             reference_datetime=reference_datetime,
         )
         try:

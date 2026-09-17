@@ -2,10 +2,16 @@
 
 ## Current state
 
-This repository is a scaffold with backend project configuration. Verified facts:
+Verified facts (re-investigate before relying on this file):
 
-- Backend scaffold: FastAPI + Pydantic app with a `GET /health` endpoint, `pyproject.toml` (setuptools), and pytest tests in `backend/`.
-- `android/`, `docs/`, and the remaining backend packages are placeholders — no application logic, integrations, or client code yet.
+- Backend scaffold: FastAPI + Pydantic app with `GET /health`, `pyproject.toml` (setuptools), and pytest tests in `backend/`.
+- Domain model: `TravelRequirements` with extraction pipeline types (`ExtractionResult`, `ClarificationItem`).
+- LLM boundary: `LLMClient` Protocol, `StubLLMClient`, `RequirementExtractionService` (structured extraction + deterministic transform).
+- Agent layer (Milestone 4): `TravelAgent` orchestrator, typed `WorkflowStatus` state machine, deterministic `policy` (gap detection), approval security boundary (`app/agent/security.py`).
+- Contracts: `SearchProvider`, `DecisionEngine`, `ExecutionProvider` Protocol definitions (contracts only; no real providers).
+- Workflow API: `POST /workflows`, `POST /workflows/{id}/messages`, `GET /workflows/{id}`.
+- No real LLM provider (OpenRouter deferred), no travel providers, no execution, no MongoDB, no Android.
+- `android/`, `docs/` are placeholders.
 - Remote is `https://github.com/Amey2101/travel-genie.git`, working on `main`.
 
 Backend commands (run from `backend/` after `pip install -e ".[dev]"`):
