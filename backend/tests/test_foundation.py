@@ -62,7 +62,7 @@ class TestStaticFrontend:
     def test_static_assets_are_served(self, client: TestClient) -> None:
         js = client.get("/static/app.js")
         assert js.status_code == 200
-        assert '"/api/plan"' in js.text and '"/api/health"' in js.text
+        assert '"/api/health"' in js.text
         assert client.get("/static/styles.css").status_code == 200
         assert client.get("/static/discover.js").status_code == 200
 

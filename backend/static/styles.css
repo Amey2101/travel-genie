@@ -135,6 +135,24 @@ input:disabled { background: var(--page); color: var(--muted); }
 .suggest li { margin-bottom: .25rem; }
 .fine { color: var(--muted); font-size: .88rem; margin: .75rem 0 0; }
 
+/* ---------- agent recommendation / clarification ---------- */
+.options { display: grid; gap: 1rem; margin-top: 1rem; }
+.option { border: 1.5px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; }
+.option-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .75rem 1rem; align-items: flex-start; }
+.option-head h3 { margin: .15rem 0 .25rem; }
+.option-head .facts { margin: 0; }
+.option .rank { display: inline-block; font: 700 .8rem var(--display); color: var(--lagoon-deep); background: var(--lagoon-wash); border-radius: 6px; padding: .1rem .45rem; }
+.option-price { text-align: right; }
+.option-price .v { font: 700 1.3rem/1.2 var(--display); }
+.option-price .fine { margin: .1rem 0 0; }
+.option .reasons { margin-top: .6rem; font-size: .92rem; color: var(--muted); }
+.clarify-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: .75rem 1rem; margin-top: 1rem; }
+.clarify-grid label { display: block; margin-bottom: .25rem; font-weight: 600; }
+.clarify-row { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; }
+.clarify-row input { flex: 1 1 16rem; }
+.clarify-row .go { margin-top: 0; }
+.clarify-error { margin: .75rem 0 0; color: var(--coral); font-weight: 600; }
+
 .day { padding: 0; overflow: hidden; }
 .day-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem 1rem; padding: 1rem 1.5rem; background: var(--lagoon-wash); border-bottom: 1px solid var(--line); }
 .day-head h2 { margin: 0; font-size: 1.25rem; }

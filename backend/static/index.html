@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Travel-Genie: plan a trip with a budget you can check</title>
-  <meta name="description" content="Tell Travel-Genie where you're headed and get a day-by-day plan with an estimated budget.">
+  <title>Travel-Genie: get ranked travel options for your trip</title>
+  <meta name="description" content="Tell Travel-Genie where you're headed and get ranked, explainable travel options from the TravelAgent.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%9E%3C/text%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -23,8 +23,8 @@
 
   <main>
     <section class="hero wrap">
-      <h1>Tell us where you're headed. Get a plan you can check against your budget.</h1>
-      <p class="lede">Fill in the boarding pass below. Travel-Genie returns a day-by-day itinerary, a budget breakdown and research links in under a minute.</p>
+      <h1>Tell us where you're headed. Get ranked travel options you can check.</h1>
+      <p class="lede">Fill in the boarding pass below. The TravelAgent extracts your requirements, asks for anything missing, then ranks travel options by how well they fit your target budget. Order is deterministic and explainable, not a booking.</p>
       <div class="hero-actions"><a id="discover-link" class="go hero-discover" href="/discover">Explore places, stays &amp; food <span aria-hidden="true">↗</span></a><span class="hero-action-note">Live search results across India · Booking agent coming soon</span></div>
     </section>
 
@@ -33,8 +33,8 @@
         <div class="pass-main">
           <div class="route">
             <div class="field route-field">
-              <label for="start_city">From</label>
-              <input id="start_city" name="start_city" value="Pune" autocomplete="off" required maxlength="80">
+              <label for="origin">From</label>
+              <input id="origin" name="origin" value="Pune" autocomplete="off" required maxlength="80">
             </div>
             <svg class="route-line" viewBox="0 0 160 40" aria-hidden="true" focusable="false">
               <path d="M4 30 Q80 -14 156 30" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 6" stroke-linecap="round"/>
@@ -103,8 +103,9 @@
 
         <div class="pass-stub">
           <div class="field">
-            <label for="budget">Total budget</label>
+            <label for="budget">Target budget</label>
             <input id="budget" name="budget" type="number" min="1" step="any" value="25000" inputmode="decimal" required>
+            <small class="hint">A soft target used for ranking, never a hard limit.</small>
           </div>
           <div class="field">
             <label for="currency">Currency</label>
@@ -118,8 +119,8 @@
               <option value="THB">THB</option>
             </select>
           </div>
-          <button type="submit" id="submit-btn" class="go">Plan my trip</button>
-          <p class="stub-note">Nothing is booked. Costs are estimates.</p>
+          <button type="submit" id="submit-btn" class="go">Find travel options</button>
+          <p class="stub-note">Nothing is booked. Results are ranked options, not reservations.</p>
         </div>
       </form>
     </section>

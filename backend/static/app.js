@@ -1,4 +1,6 @@
-/* Travel-Genie frontend: vanilla JS. Talks to GET /api/health and POST /api/plan. */
+/* Travel-Genie frontend: drives the TravelAgent workflow.
+ * Endpoints: GET /api/health, POST /workflows, POST /workflows/{id}/requirements,
+ * POST /workflows/{id}/clarifications, GET /workflows/{id}. It never calls POST /api/plan. */
 (function () {
   "use strict";
 
@@ -12,6 +14,7 @@
   var duration = document.getElementById("duration_days");
   var durationHint = document.getElementById("duration-hint");
   var lastPayload = null;
+  var workflowId = null;
   var loadingTimer = null;
 
   // ---------- small DOM helper (text is always set via textContent, never innerHTML) ----------
@@ -36,10 +39,10 @@
   function money(n, currency) {
     try {
       return new Intl.NumberFormat(currency === "INR" ? "en-IN" : undefined, {
-        style: "currency", currency: currency, maximumFractionDigits: 0
+        style: "currency", currency: currency || "INR", maximumFractionDigits: 0
       }).format(n);
     } catch (e) {
-      return currency + " " + Math.round(n).toLocaleString();
+      return (currency || "") + " " + Math.round(n).toLocaleString();
     }
   }
 
@@ -52,6 +55,10 @@
     var m = String(d.getMonth() + 1).padStart(2, "0");
     var day = String(d.getDate()).padStart(2, "0");
     return d.getFullYear() + "-" + m + "-" + day;
+  }
+
+  function titleCase(value) {
+    return String(value || "").replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); });
   }
 
   // ---------- form defaults and date logic ----------
@@ -95,11 +102,11 @@
     })
     .catch(function () { pill.textContent = "Server not reachable"; pill.classList.add("demo"); });
 
-  // ---------- submit ----------
+  // ---------- payload ----------
   function readPayload() {
     var fd = new FormData(form);
     var payload = {
-      start_city: (fd.get("start_city") || "").trim(),
+      origin: (fd.get("origin") || "").trim(),
       destination: (fd.get("destination") || "").trim(),
       departure_date: fd.get("departure_date"),
       travelers: Number(fd.get("travelers")),
@@ -138,18 +145,78 @@
     requestPlan(lastPayload);
   });
 
+  // ---------- API ----------
+  function postJSON(url, body) {
+    var options = { method: "POST", headers: { "Content-Type": "application/json" } };
+    if (body !== undefined) options.body = JSON.stringify(body);
+    return fetch(url, options).then(function (resp) {
+      return resp.json().catch(function () { return {}; }).then(function (data) {
+        if (!resp.ok) {
+          var err = (data && data.error) || {};
+          var e = new Error(err.message || "Something went wrong. Please try again.");
+          e.details = err.details || [];
+          e.code = err.code || "http_error";
+          throw e;
+        }
+        return data;
+      });
+    });
+  }
+
+  function requestPlan(payload) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Finding options…";
+    showLoading();
+    workflowId = null;
+    fetch("/workflows", { method: "POST" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        workflowId = d.workflow_id;
+        return postJSON("/workflows/" + encodeURIComponent(workflowId) + "/requirements", payload);
+      })
+      .then(handleResponse)
+      .catch(handleFailure);
+  }
+
+  function sendClarification(payload, panel) {
+    var send = panel.querySelector(".clarify-row .go");
+    var existing = panel.querySelector(".clarify-error");
+    if (existing) existing.remove();
+    if (send) { send.disabled = true; send.textContent = "Submitting…"; }
+    postJSON("/workflows/" + encodeURIComponent(workflowId) + "/clarifications", payload)
+      .then(function (body) { handleResponse(body); })
+      .catch(function (err) {
+        if (send) { send.disabled = false; send.textContent = "Submit answer"; }
+        panel.appendChild(h("p", { class: "clarify-error", role: "alert",
+          text: err.message || "Please check the values and try again." }));
+      });
+  }
+
+  function handleFailure(err) {
+    stopLoading();
+    showError({ message: err.message, details: err.details || [] });
+  }
+
+  function handleResponse(body) {
+    stopLoading();
+    if (!body || body.status === "failed") {
+      showError({ message: (body && body.error && body.error.message) || "The conversation ended with an error. Please start again.", details: [] });
+      return;
+    }
+    renderResponse(body);
+  }
+
   var LOADING_STEPS = [
     "Checking your trip details…",
-    "Looking up places and sources…",
-    "Drafting your day-by-day plan…",
-    "Adding up the budget…"
+    "Asking the agent to search travel options…",
+    "Ranking options against your preferences…"
   ];
 
   function showLoading() {
     var msg = h("span", { text: LOADING_STEPS[0] });
     results.replaceChildren(
       h("div", { class: "panel loading", role: "status" }, h("div", { class: "spinner", "aria-hidden": "true" }),
-        h("div", null, h("strong", { text: "Planning your trip" }), h("br"), msg))
+        h("div", null, h("strong", { text: "Talking to the travel agent" }), h("br"), msg))
     );
     var i = 0;
     clearInterval(loadingTimer);
@@ -157,30 +224,7 @@
     results.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function stopLoading() { clearInterval(loadingTimer); submitBtn.disabled = false; submitBtn.textContent = "Plan my trip"; }
-
-  function requestPlan(payload) {
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Planning…";
-    showLoading();
-    fetch("/api/plan", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    })
-      .then(function (resp) {
-        return resp.json().catch(function () { return {}; }).then(function (body) { return { ok: resp.ok, body: body }; });
-      })
-      .then(function (r) {
-        stopLoading();
-        if (!r.ok) return showError(r.body && r.body.error);
-        renderPlan(r.body);
-      })
-      .catch(function () {
-        stopLoading();
-        showError({ message: "Can't reach the Travel-Genie server. Check that it is running, then retry.", details: [] });
-      });
-  }
+  function stopLoading() { clearInterval(loadingTimer); submitBtn.disabled = false; submitBtn.textContent = "Find travel options"; }
 
   // ---------- errors ----------
   function showError(err) {
@@ -194,10 +238,10 @@
     var retry = h("button", { class: "btn", type: "button", text: "Retry" });
     retry.addEventListener("click", function () { if (lastPayload) requestPlan(lastPayload); });
     var edit = h("button", { class: "btn", type: "button", text: "Edit trip details" });
-    edit.addEventListener("click", function () { form.scrollIntoView({ behavior: "smooth" }); document.getElementById("start_city").focus(); });
+    edit.addEventListener("click", function () { form.scrollIntoView({ behavior: "smooth" }); document.getElementById("origin").focus(); });
     results.replaceChildren(
       h("div", { class: "panel error", role: "alert" },
-        h("h2", { text: "We couldn't plan that trip" }),
+        h("h2", { text: "We couldn't finish that request" }),
         h("p", { text: details.length ? "Fix these and try again:" : (err.message || "Something went wrong. Please try again.") }),
         list,
         h("div", { class: "again" }, retry, edit))
@@ -208,122 +252,199 @@
   // ---------- rendering ----------
   function badge(text, cls) { return h("span", { class: "badge " + cls, text: text }); }
 
-  // Explicit banner whenever neither configured AI provider produced the itinerary.
-  function demoNotice(m) {
-    var hint = m.ai_status === "not_configured"
-      ? "No Gemini or Groq API key was found. Add GEMINI_API_KEY and/or GROQ_API_KEY to .env and restart the server."
-      : "Gemini and any configured Groq backup could not produce a usable itinerary. Check the warning and server logs.";
-    return h("div", { class: "notice", role: "alert" },
-      h("strong", { text: "Demo mode: this itinerary was NOT generated by an AI provider." }),
-      h("span", { text: " " + hint }));
-  }
+  var STATUS_LABELS = {
+    collecting_requirements: "Collecting details",
+    awaiting_clarification: "Needs more details",
+    requirements_complete: "Requirements complete",
+    failed: "Failed"
+  };
 
-  function renderPlan(p) {
-    var cur = p.trip.currency;
-    var m = p.meta;
+  function renderResponse(body) {
     var frag = document.createDocumentFragment();
+    if (body.requirements) frag.appendChild(summaryPanel(body));
 
-    // Summary and provenance
-    var live = m.itinerary_source === "gemini" || m.itinerary_source === "groq";
-    var researched = m.research_source === "serpapi";
-    var researchText = researched ? "Research: live Google results (SerpApi)" :
-      m.research_source === "unavailable" ? "Research: unavailable, none used" : "Research: not used";
-    var summary = h("div", { class: "panel" },
-      h("div", { class: "summary-head" },
-        h("div", null,
-          h("h2", { text: p.trip.start_city + " to " + p.trip.destination }),
-          h("p", { class: "facts", text:
-            prettyDate(p.trip.departure_date) + " to " + prettyDate(p.trip.return_date) + ", " +
-            p.trip.duration_days + (p.trip.duration_days === 1 ? " day" : " days") + ", " +
-            p.trip.travelers + (p.trip.travelers === 1 ? " traveler" : " travelers") + ", " + p.trip.travel_style + " style" }))),
-      h("div", { class: "badges" },
-        badge(live ? "Itinerary: AI-generated (" + (m.model || (m.itinerary_source === "groq" ? "Groq" : "Gemini")) + ")" : "Itinerary: demo template, not AI", live ? "live" : "demo"),
-        badge(researchText, researched ? "live" : "neutral"),
-        badge("Prices: estimates, not verified", "neutral")),
-      !live ? demoNotice(m) : null,
-      h("p", { text: p.overview }),
-      m.warnings.length ? h("ul", { class: "warnings" }, m.warnings.map(function (w) { return h("li", { text: w }); })) : null,
-      h("p", { class: "disclaimer", text: m.disclaimer }));
-    frag.appendChild(summary);
-
-    // Budget
-    var b = p.budget;
-    var diffAbs = Math.abs(b.difference);
-    var maxLine = Math.max.apply(null, b.lines.map(function (l) { return l.amount; }).concat([1]));
-    var budget = h("div", { class: "panel" },
-      h("h2", { text: "Estimated budget" }),
-      h("div", { class: "money-cards" },
-        h("div", { class: "money" }, h("div", { class: "k", text: "Estimated total" }), h("div", { class: "v", text: money(b.estimated_total, cur) }), h("div", { class: "fine", text: money(b.per_person, cur) + " per person" })),
-        h("div", { class: "money" }, h("div", { class: "k", text: "Your budget" }), h("div", { class: "v", text: money(b.user_budget, cur) })),
-        h("div", { class: "money " + (b.within_budget ? "under" : "over") },
-          h("div", { class: "k", text: b.within_budget ? "Estimated to be under budget by" : "Estimated to be over budget by" }),
-          h("div", { class: "v", text: money(diffAbs, cur) }))),
-      b.lines.map(function (l) {
-        var bar = h("i"); bar.style.width = Math.max(2, Math.round(l.amount / maxLine * 100)) + "%";
-        return h("div", { class: "cat" }, h("span", { text: l.label }), h("div", { class: "bar", "aria-hidden": "true" }, bar), h("span", { class: "amt", text: money(l.amount, cur) }));
-      }),
-      h("ul", { class: "suggest" }, b.suggestions.map(function (s) { return h("li", { text: s }); })),
-      h("p", { class: "fine", text: b.note }));
-    frag.appendChild(budget);
-
-    // Days
-    p.days.forEach(function (d) {
-      function slot(label, s) {
-        return h("div", { class: "slot" },
-          h("div", { class: "when", text: label }),
-          h("h3", { text: s.title }),
-          s.description ? h("p", { text: s.description }) : null,
-          h("div", { class: "cost", text: s.est_cost ? "About " + money(s.est_cost, cur) + " for the group" : "No extra cost expected" }));
-      }
-      frag.appendChild(h("section", { class: "panel day", "aria-label": "Day " + d.day },
-        h("div", { class: "day-head" },
-          h("h2", { text: "Day " + d.day + ": " + d.title }),
-          h("span", { class: "date", text: prettyDate(d.date) }),
-          h("span", { class: "daycost", text: "Activities about " + money(d.est_day_cost, cur) })),
-        h("div", { class: "slots" }, slot("Morning", d.morning), slot("Afternoon", d.afternoon), slot("Evening", d.evening)),
-        h("div", { class: "day-foot" },
-          h("dl", null, h("dt", { text: "Meal ideas" }),
-            h("dd", { text: "Breakfast: " + d.meals.breakfast }), h("dd", { text: "Lunch: " + d.meals.lunch }), h("dd", { text: "Dinner: " + d.meals.dinner })),
-          h("dl", null, h("dt", { text: "Getting around" }), h("dd", { text: d.transport })))));
-    });
-
-    // Stay
-    frag.appendChild(h("div", { class: "panel" },
-      h("h2", { text: "Where to stay" }),
-      h("div", { class: "stays" }, p.accommodation.map(function (s) {
-        return h("div", { class: "stay" }, h("h3", { text: s.area }), s.why ? h("p", { text: s.why }) : null,
-          s.est_per_night ? h("p", { text: "Rough room rate: about " + money(s.est_per_night, cur) + " per night (estimate)" }) : null);
-      }))));
-
-    // Tips and caveats
-    frag.appendChild(h("div", { class: "two-col" },
-      h("div", { class: "panel" }, h("h2", { text: "Travel tips" }), h("ul", { class: "plain" }, p.tips.map(function (t) { return h("li", { text: t }); }))),
-      h("div", { class: "panel" }, h("h2", { text: "Things to keep in mind" }), h("ul", { class: "plain" }, p.caveats.map(function (t) { return h("li", { text: t }); })))));
-
-    // Sources
-    var sourcesPanel = h("div", { class: "panel wide" }, h("h2", { text: "Research links" }));
-    if (p.sources.length) {
-      sourcesPanel.appendChild(h("ul", { class: "sources" }, p.sources.map(function (s) {
-        return h("li", null,
-          h("a", { href: s.url, target: "_blank", rel: "noopener noreferrer", text: s.title }),
-          h("span", { class: "kind", text: s.kind === "maps" ? "Google Maps" : "Google Search" }),
-          s.snippet ? h("p", { text: s.snippet }) : null);
-      })));
-      sourcesPanel.appendChild(h("p", { class: "fine", text: "Live results from SerpApi at the time of planning. Open them to confirm hours and prices." }));
-    } else {
-      sourcesPanel.appendChild(h("p", { text: "No live research links for this plan. Add a SerpApi key to include Google results." }));
+    if (body.clarification_questions && body.clarification_questions.length) {
+      frag.appendChild(clarificationPanel(body.clarification_questions));
+    } else if (body.recommendation) {
+      frag.appendChild(recommendationPanel(body.recommendation, body.requirements));
     }
-    frag.appendChild(sourcesPanel);
 
-    // Actions
     var again = h("button", { class: "btn", type: "button", text: "Plan another trip" });
-    again.addEventListener("click", function () { form.scrollIntoView({ behavior: "smooth" }); });
-    var regen = h("button", { class: "btn", type: "button", text: "Regenerate this plan" });
-    regen.addEventListener("click", function () { if (lastPayload) requestPlan(lastPayload); });
-    frag.appendChild(h("div", { class: "again" }, regen, again));
+    again.addEventListener("click", function () { workflowId = null; form.scrollIntoView({ behavior: "smooth" }); });
+    frag.appendChild(h("div", { class: "again" }, again));
 
     results.replaceChildren(frag);
     results.scrollIntoView({ behavior: "smooth", block: "start" });
     results.focus({ preventScroll: true });
+  }
+
+  function summaryPanel(body) {
+    var req = body.requirements;
+    var trip = req.trip || {};
+    var dates = trip.dates || null;
+    var when = "Dates not set";
+    if (dates && dates.date_range) when = prettyDate(dates.date_range.start) + " to " + prettyDate(dates.date_range.end);
+    else if (dates && dates.duration_days) when = dates.duration_days + (dates.duration_days === 1 ? " day" : " days");
+
+    var travelers = req.travelers && req.travelers.count;
+    var budget = req.budget || {};
+    var facts = [when];
+    if (travelers) facts.push(travelers + (travelers === 1 ? " traveler" : " travelers"));
+    if (budget.total != null) facts.push("budget " + money(Number(budget.total), budget.currency) + (budget.is_approximate ? " (target)" : ""));
+
+    var status = body.status || "";
+    var badges = h("div", { class: "badges" },
+      badge(STATUS_LABELS[status] || titleCase(status), status === "requirements_complete" ? "live" : "neutral"));
+
+    return h("div", { class: "panel" },
+      h("div", { class: "summary-head" },
+        h("div", null,
+          h("h2", { text: (trip.origin || "Origin") + " to " + (trip.destination || "Destination") }),
+          h("p", { class: "facts", text: facts.join(" · ") }))),
+      badges,
+      body.reply ? h("p", { class: "fine", text: body.reply }) : null);
+  }
+
+  // Deterministic clarification inputs, keyed by the backend clarification
+  // field. Answers are merged server-side without involving an LLM, so they
+  // work with the credential-free default (stub) provider.
+  var CLARIFY_INPUTS = {
+    "trip.origin": [{ key: "origin", label: "From", type: "text", placeholder: "e.g. Pune", autocomplete: "off", maxlength: "80" }],
+    "trip.destination": [{ key: "destination", label: "To", type: "text", placeholder: "e.g. Goa", autocomplete: "off", maxlength: "80" }],
+    "travel.timing": [
+      { key: "departure_date", label: "Departure date", type: "date" },
+      { key: "duration_days", label: "Trip length (days)", type: "number", min: "1", max: "60", inputmode: "numeric" },
+      { key: "return_date", label: "Return date", type: "date" }
+    ],
+    "budget.total": [{ key: "budget", label: "Target budget", type: "number", min: "1", step: "any", inputmode: "decimal" }],
+    "travelers.count": [{ key: "travelers", label: "Travelers", type: "number", min: "1", max: "20", inputmode: "numeric" }]
+  };
+  var NUMERIC_ANSWER_FIELDS = { duration_days: true, travelers: true, budget: true };
+
+  function clarificationPanel(questions) {
+    var specs = [];
+    var seen = {};
+    var unresolved = [];
+    questions.forEach(function (q) {
+      var list = CLARIFY_INPUTS[q.field];
+      if (!list) { unresolved.push(q.field); return; }
+      list.forEach(function (spec) { if (!seen[spec.key]) { seen[spec.key] = true; specs.push(spec); } });
+    });
+
+    var inputs = {};
+    var grid = specs.map(function (spec) {
+      var id = "clarify-" + spec.key;
+      var attrs = { id: id, name: spec.key, type: spec.type };
+      ["placeholder", "min", "max", "step", "inputmode", "maxlength", "autocomplete"].forEach(function (k) {
+        if (spec[k] != null) attrs[k] = spec[k];
+      });
+      var input = h("input", attrs);
+      if (lastPayload && lastPayload[spec.key] != null && lastPayload[spec.key] !== "") {
+        input.value = lastPayload[spec.key];
+      }
+      inputs[spec.key] = input;
+      return h("div", { class: "field" }, h("label", { for: id, text: spec.label }), input);
+    });
+
+    var send = h("button", { class: "go", type: "button", text: "Submit answer" });
+    var panel = h("div", { class: "panel" },
+      h("h2", { text: "A few details are still missing" }),
+      h("ul", { class: "plain" }, questions.map(function (q) { return h("li", { text: q.question }); })),
+      grid.length ? h("div", { class: "clarify-grid" }, grid) : null,
+      grid.length ? h("div", { class: "clarify-row" }, send) : null,
+      !grid.length ? h("p", { class: "fine", text: "We can't fill this in automatically. Please update the trip details in the form above and submit again." }) : null,
+      unresolved.length ? h("p", { class: "fine", text: "Still needed: " + unresolved.join(", ") + "." }) : null);
+
+    if (grid.length) {
+      send.addEventListener("click", function () {
+        var payload = {};
+        specs.forEach(function (spec) {
+          var el = inputs[spec.key];
+          var raw = (el.value || "").trim();
+          el.removeAttribute("aria-invalid");
+          if (!raw) return;
+          var value = NUMERIC_ANSWER_FIELDS[spec.key] ? Number(raw) : raw;
+          if (typeof value === "number" && isNaN(value)) { el.setAttribute("aria-invalid", "true"); return; }
+          payload[spec.key] = value;
+        });
+        if (!Object.keys(payload).length) {
+          inputs[specs[0].key].setAttribute("aria-invalid", "true");
+          inputs[specs[0].key].focus();
+          return;
+        }
+        sendClarification(payload, panel);
+      });
+    }
+    return panel;
+  }
+
+  function recommendationPanel(rec, req) {
+    var panel = h("div", { class: "panel" });
+    var titleByStatus = {
+      ok: "Recommended options",
+      no_results: "No options found",
+      no_feasible_options: "No options match your hard requirements",
+      provider_unavailable: "Travel search is unavailable",
+      decision_error: "We couldn't evaluate the options"
+    };
+    panel.appendChild(h("h2", { text: titleByStatus[rec.status] || "Recommendation" }));
+
+    if (rec.status === "ok" && rec.options && rec.options.length) {
+      panel.appendChild(h("p", { class: "notice" },
+        h("strong", { text: "Demo data, not bookable. " }),
+        h("span", { text: "These options are synthetic fixtures from the demo search provider. Prices are not live and nothing here can be booked." })));
+      panel.appendChild(h("div", { class: "options" }, rec.options.map(function (opt) { return optionCard(opt, req); })));
+    } else if (rec.status === "provider_unavailable") {
+      panel.appendChild(h("p", { text: "The travel search provider could not be reached. This is a provider failure, not an empty result. Please try again later." }));
+    } else if (rec.status === "decision_error") {
+      panel.appendChild(h("p", { text: "The options were retrieved but could not be evaluated. No recommendation was produced." }));
+    } else if (rec.status === "no_results") {
+      panel.appendChild(h("p", { text: "The search provider returned no options for this route." }));
+    } else if (rec.status === "no_feasible_options") {
+      panel.appendChild(h("p", { text: "Every option was rejected by your hard requirements." }));
+    }
+
+    if (rec.rejected && rec.rejected.length) {
+      panel.appendChild(h("h3", { text: "Rejected options" }));
+      panel.appendChild(h("ul", { class: "plain" }, rec.rejected.slice(0, 8).map(function (r) {
+        return h("li", null,
+          h("strong", { text: r.candidate && r.candidate.label ? r.candidate.label : "Option" }),
+          " — ",
+          h("span", { text: (r.reasons || []).map(titleCase).join(", ") }));
+      })));
+    }
+    return panel;
+  }
+
+  function optionCard(opt, req) {
+    var c = opt.candidate || {};
+    var currency = c.currency || (req && req.budget && req.budget.currency) || "INR";
+    var badges = h("div", { class: "badges" });
+    if (c.bookable) badges.appendChild(badge("Bookable", "live"));
+    else badges.appendChild(badge("Demo · not bookable", "demo"));
+    if (c.source) badges.appendChild(badge("Source: " + c.source, c.source === "verified" ? "live" : "neutral"));
+
+    var meta = [];
+    if (c.transport_mode) meta.push(titleCase(c.transport_mode));
+    if (c.duration_days != null) meta.push(c.duration_days + " day(s)");
+    if (c.departure_time) meta.push("departs " + String(c.departure_time).replace(/_/g, " "));
+
+    var priceText = c.price != null ? money(Number(c.price), currency) : "Price unavailable";
+    var score = typeof opt.score === "number" ? Math.round(opt.score * 100) + "% match" : null;
+
+    return h("article", { class: "option" },
+      h("div", { class: "option-head" },
+        h("div", null,
+          h("span", { class: "rank", text: "#" + opt.rank }),
+          h("h3", { text: c.label || "Option" }),
+          meta.length ? h("p", { class: "facts", text: meta.join(" · ") }) : null),
+        h("div", { class: "option-price" },
+          h("div", { class: "v", text: priceText }),
+          score ? h("div", { class: "fine", text: score }) : null)),
+      badges,
+      opt.reasons && opt.reasons.length
+        ? h("ul", { class: "plain reasons" }, opt.reasons.map(function (r) { return h("li", { text: r }); }))
+        : null,
+      h("p", { class: "fine", text: "Booking is not available in this build." }));
   }
 })();

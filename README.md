@@ -50,9 +50,15 @@ Open <http://127.0.0.1:8000> for the web UI. Health checks:
 Endpoints:
 
 - `POST /workflows`, `POST /workflows/{id}/messages`, `GET /workflows/{id}` — conversational requirement collection, followed by search + deterministic recommendation once requirements are complete.
+- `POST /workflows/{id}/requirements` — deterministic structured-input entry point used by the home-page form. It maps validated form fields into the same extraction/clarification/search/decision pipeline as the text path (no second orchestrator). A stated budget is a soft target (`approximate`), never a hard maximum.
+- `POST /workflows/{id}/clarifications` — deterministic clarification answers (from/to, dates/duration, travelers, budget). It merges the supplied values into the current extraction and resumes the same pipeline, so clarifications are answerable with the default `stub` provider (which cannot parse free text). `409` when there is nothing to clarify yet, `422` for inconsistent answers.
 - `GET /api/discover?destination=...&category=...` — live destination discovery (SerpApi Google Maps): places to see and do, not bookable inventory. Returns `503 discovery_unavailable` when no `SERPAPI_API_KEY` is configured.
-- `POST /api/plan` — compatibility endpoint for the frontend planner; returns `501 not_implemented` until the planning pipeline lands.
+- `POST /api/plan` — **retained compatibility placeholder**: always returns `501 not_implemented`. The frontend no longer calls it; no parallel planner is implemented.
 - `GET /` and `GET /discover` — static pages; assets under `/static`.
+
+#### Frontend
+
+The static home page (`backend/static/app.js`) drives the `TravelAgent` workflow directly: it creates a workflow, submits the structured form to `/workflows/{id}/requirements`, renders clarification questions (answered with a deterministic form posting to `/workflows/{id}/clarifications`) and the returned recommendation, and labels synthetic demo results as non-bookable. It never fabricates prices, availability, itineraries or bookings, and it does not call `/api/plan`.
 
 ### Configuration
 
@@ -114,8 +120,9 @@ pytest
 - [x] Real LLM providers (Gemini and Groq) behind `LLMClient` for structured requirement extraction
 - [x] Planning pipeline (validated requirements → search → deterministic recommendation), with an explicit synthetic demo `SearchProvider`
 - [x] Decision engine: deterministic hard-constraint filtering, ranking, explanations, typed outcomes
+- [x] Frontend/workflow integration: the home page drives `TravelAgent` via a deterministic structured-input adapter and renders real recommendations (`/api/plan` remains an unused 501 placeholder)
 - [ ] Real bookable transport/accommodation inventory search (`SearchProvider`)
-- [ ] Itinerary generation and budget estimation for the frontend planner (`/api/plan`)
+- [ ] Itinerary generation and budget estimation (the rich `PlanResponse` UI was not integrated; only ranked options are shown)
 - [ ] Execution provider (booking, cancellation)
 - [ ] MongoDB persistence
 - [ ] Android client

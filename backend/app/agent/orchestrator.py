@@ -23,7 +23,11 @@ from app.decision.engine import (
     RecommendationInput,
     RecommendationStatus,
 )
-from app.models.travel_requirements import ClarificationItem, TravelRequirements
+from app.models.travel_requirements import (
+    ClarificationItem,
+    ExtractionResult,
+    TravelRequirements,
+)
 from app.services.requirement_extraction import (
     ExtractionError,
     InconsistentExtractionError,
@@ -120,13 +124,39 @@ class TravelAgent:
         except ExtractionError as exc:
             return self._record_failure(state, exc)
 
+        return self._continue_turn(state, result)
+
+    def handle_structured(
+        self, workflow_id: str, result: ExtractionResult
+    ) -> AgentResponse:
+        """Continue a workflow from an already-validated ``ExtractionResult``.
+
+        Used by the deterministic structured-input adapter. It shares the exact
+        turn logic (clarification policy, search handoff, planning) with the
+        free-text path, so there is only one orchestration path.
+        """
+        state = self.get_state(workflow_id)
+        if state.status is WorkflowStatus.FAILED:
+            return self._terminal_error_response(state)
+
+        state.conversation.append(
+            WorkflowMessage(
+                role=MessageRole.USER,
+                text=result.metadata.original_user_message,
+            )
+        )
+        return self._continue_turn(state, result)
+
+    def _continue_turn(
+        self, state: AgentState, result: ExtractionResult
+    ) -> AgentResponse:
         state.last_extraction = result
         state.requirements = result.requirements
 
         required = missing_required(result)
         if required:
             response = AgentResponse(
-                workflow_id=workflow_id,
+                workflow_id=state.workflow_id,
                 status=WorkflowStatus.AWAITING_CLARIFICATION,
                 action=AgentAction.ASK_CLARIFICATION,
                 reply=_clarification_reply(required),
@@ -136,7 +166,7 @@ class TravelAgent:
             state.clarification = ClarificationState(pending=required)
         else:
             response = AgentResponse(
-                workflow_id=workflow_id,
+                workflow_id=state.workflow_id,
                 status=WorkflowStatus.REQUIREMENTS_COMPLETE,
                 action=AgentAction.SEARCH,
                 reply=(
@@ -146,7 +176,7 @@ class TravelAgent:
                 ),
                 requirements=result.requirements,
                 search_handoff=SearchRequest(
-                    workflow_id=workflow_id, requirements=result.requirements
+                    workflow_id=state.workflow_id, requirements=result.requirements
                 ),
             )
             state.clarification = ClarificationState()

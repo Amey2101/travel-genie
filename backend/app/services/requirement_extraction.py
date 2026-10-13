@@ -138,6 +138,18 @@ def _as_output(output: object) -> LLMExtractionOutput:
 # ---------------------------------------------------------------------------
 
 
+def to_extraction_result(
+    output: LLMExtractionOutput, *, original_message: str
+) -> ExtractionResult:
+    """Public entry point for the deterministic transformation.
+
+    Exposed so a non-LLM (structured-input) adapter can reuse the *exact* same
+    mapping and clarification policy as the LLM extraction path, rather than
+    reimplementing it and risking drift.
+    """
+    return _to_extraction_result(output, original_message=original_message)
+
+
 def _to_extraction_result(
     output: LLMExtractionOutput, *, original_message: str
 ) -> ExtractionResult:

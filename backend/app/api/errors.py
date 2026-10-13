@@ -21,13 +21,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 log = logging.getLogger("travel_genie.app")
 
 FIELD_LABELS = {
-    "start_city": "Starting city",
+    "origin": "Starting city",
     "destination": "Destination",
     "departure_date": "Departure date",
     "return_date": "Return date",
     "duration_days": "Trip duration",
     "travelers": "Number of travelers",
-    "budget": "Total budget",
+    "budget": "Target budget",
     "currency": "Currency",
     "travel_style": "Travel style",
     "interests": "Interests",
