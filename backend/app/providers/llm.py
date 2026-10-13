@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
@@ -41,6 +43,94 @@ class LLMExtractionRequest(BaseModel):
     system_prompt: str
     user_message: str
     reference_datetime: datetime
+
+
+# ---------------------------------------------------------------------------
+# Provider-level errors
+# ---------------------------------------------------------------------------
+#
+# These describe failures *talking to* a provider (credentials, transport,
+# rate limits, unreadable/unexpected payloads). They deliberately carry only
+# fixed, credential-free messages. Domain/schema validation failures are NOT
+# raised here: providers let ``pydantic.ValidationError`` propagate so the
+# extraction service can keep deterministic validation authoritative.
+
+
+class LLMClientError(Exception):
+    """Base class for a safe, application-level LLM provider failure."""
+
+    code = "llm_provider_error"
+
+
+class LLMNotConfiguredError(LLMClientError):
+    """The selected live provider has no credentials configured."""
+
+    code = "llm_not_configured"
+
+
+class LLMRequestError(LLMClientError):
+    """Transport, authentication, rate-limit or provider HTTP failure."""
+
+    code = "llm_request_failed"
+
+
+class LLMResponseError(LLMClientError):
+    """The provider responded, but the payload was missing or unreadable."""
+
+    code = "llm_invalid_response"
+
+
+# ---------------------------------------------------------------------------
+# Shared structured-output helpers
+# ---------------------------------------------------------------------------
+
+
+def structured_system_prompt(system_prompt: str, schema: type[BaseModel]) -> str:
+    """Append the target JSON Schema to a provider system instruction.
+
+    Providers do not assume a native structured-output feature: the schema is
+    supplied in-band, then the returned JSON is validated against it.
+    """
+    schema_json = json.dumps(
+        schema.model_json_schema(), indent=2, ensure_ascii=False
+    )
+    return (
+        f"{system_prompt}\n\n"
+        "Respond with a single JSON object that conforms to the JSON Schema "
+        "below. Return raw JSON only: no markdown code fences and no "
+        "commentary. Omit unknown fields rather than guessing values.\n"
+        f"JSON Schema:\n{schema_json}"
+    )
+
+
+_CODE_FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.IGNORECASE)
+
+
+def parse_json_object(text: str) -> dict:
+    """Parse a JSON object from model output, tolerating fences/prose.
+
+    Raises ``LLMResponseError`` (never a raw provider exception) when the text
+    is empty, malformed, or not a JSON object.
+    """
+    candidate = (text or "").strip()
+    if not candidate:
+        raise LLMResponseError("The provider returned an empty response.")
+    candidate = _CODE_FENCE.sub("", candidate)
+    try:
+        data = json.loads(candidate)
+    except json.JSONDecodeError:
+        start, end = candidate.find("{"), candidate.rfind("}")
+        if start == -1 or end <= start:
+            raise LLMResponseError("The provider returned malformed JSON.")
+        try:
+            data = json.loads(candidate[start : end + 1])
+        except json.JSONDecodeError as exc:
+            raise LLMResponseError("The provider returned malformed JSON.") from exc
+    if not isinstance(data, dict):
+        raise LLMResponseError(
+            "The provider returned JSON in an unexpected shape."
+        )
+    return data
 
 
 # ---------------------------------------------------------------------------

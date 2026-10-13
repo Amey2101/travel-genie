@@ -20,6 +20,7 @@ from app.services.requirement_extraction import (
     ExtractionError,
     InconsistentExtractionError,
     LLMOutputValidationError,
+    LLMProviderError,
     RequirementExtractionService,
 )
 from app.tools.search import SearchRequest
@@ -30,6 +31,8 @@ def _error_code(exc: Exception) -> str:
         return "llm_invalid_output"
     if isinstance(exc, InconsistentExtractionError):
         return "inconsistent_extraction"
+    if isinstance(exc, LLMProviderError):
+        return exc.code
     return "extraction_failed"
 
 

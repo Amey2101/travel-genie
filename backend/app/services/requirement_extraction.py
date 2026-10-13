@@ -23,6 +23,7 @@ from app.models.travel_requirements import (
 from app.prompts.extraction import build_extraction_prompt
 from app.providers.llm import (
     LLMClient,
+    LLMClientError,
     LLMExtractionOutput,
     LLMExtractionRequest,
     BudgetExtraction,
@@ -36,6 +37,18 @@ class ExtractionError(Exception):
 
 class LLMOutputValidationError(ExtractionError):
     """Raised when the LLM structured output fails schema validation."""
+
+
+class LLMProviderError(ExtractionError):
+    """Raised when a live LLM provider fails (credentials, transport,
+    rate limit, or an unreadable/unexpected response).
+
+    ``code`` is a stable, credential-free error code surfaced to the agent.
+    """
+
+    def __init__(self, message: str, *, code: str = "llm_provider_error") -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class InconsistentExtractionError(ExtractionError):
@@ -103,6 +116,8 @@ class RequirementExtractionService:
             raise LLMOutputValidationError(
                 f"LLM structured output failed validation: {exc}"
             ) from exc
+        except LLMClientError as exc:
+            raise LLMProviderError(str(exc), code=exc.code) from exc
         resulting_output = _as_output(output)
         return _to_extraction_result(resulting_output, original_message=user_message)
 

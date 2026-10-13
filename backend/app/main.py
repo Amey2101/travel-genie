@@ -14,8 +14,7 @@ from app.api.health import router as health_router
 from app.api.plan import router as plan_router
 from app.api.workflows import workflows_router
 from app.core import config
-from app.providers.llm import LLMExtractionOutput
-from app.providers.stub_llm import StubLLMClient
+from app.providers.factory import build_llm_client
 from app.services.requirement_extraction import RequirementExtractionService
 from app.tools.discovery import DiscoveryProvider
 
@@ -57,8 +56,7 @@ async def lifespan(_: FastAPI):
 
 
 def _default_agent() -> TravelAgent:
-    stub = StubLLMClient(LLMExtractionOutput())
-    extraction = RequirementExtractionService(stub)
+    extraction = RequirementExtractionService(build_llm_client())
     return TravelAgent(extraction=extraction, store=InMemoryWorkflowStore())
 
 

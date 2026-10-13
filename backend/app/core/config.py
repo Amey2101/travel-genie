@@ -41,6 +41,15 @@ def log_level() -> str:
 DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
 
+# Supported structured-extraction providers. Selection is explicit and never
+# falls back automatically; `stub` is the credential-free default.
+SUPPORTED_LLM_PROVIDERS = ("stub", "gemini", "groq")
+
+
+def llm_provider() -> str:
+    """Selected LLM provider name (lower-cased). Defaults to ``stub``."""
+    return os.getenv("LLM_PROVIDER", "stub").strip().lower() or "stub"
+
 
 def gemini_key() -> str:
     return os.getenv("GEMINI_API_KEY", "").strip()
