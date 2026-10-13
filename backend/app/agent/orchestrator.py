@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from uuid import uuid4
 
 from app.agent.actions import AgentResponse
@@ -15,6 +16,13 @@ from app.agent.state import (
     WorkflowStatus,
 )
 from app.agent.store import WorkflowStore
+from app.decision.engine import (
+    Candidate,
+    DecisionEngine,
+    Recommendation,
+    RecommendationInput,
+    RecommendationStatus,
+)
 from app.models.travel_requirements import ClarificationItem, TravelRequirements
 from app.services.requirement_extraction import (
     ExtractionError,
@@ -23,7 +31,9 @@ from app.services.requirement_extraction import (
     LLMProviderError,
     RequirementExtractionService,
 )
-from app.tools.search import SearchRequest
+from app.tools.search import SearchError, SearchProvider, SearchRequest
+
+log = logging.getLogger("travel_genie.agent")
 
 
 def _error_code(exc: Exception) -> str:
@@ -77,9 +87,13 @@ class TravelAgent:
         *,
         extraction: RequirementExtractionService,
         store: WorkflowStore,
+        search_provider: SearchProvider | None = None,
+        decision_engine: DecisionEngine | None = None,
     ) -> None:
         self._extraction = extraction
         self._store = store
+        self._search_provider = search_provider
+        self._decision_engine = decision_engine
 
     def create_workflow(self) -> str:
         workflow_id = uuid4().hex
@@ -136,7 +150,73 @@ class TravelAgent:
                 ),
             )
             state.clarification = ClarificationState()
+            self._run_planning(state, response)
         return self._complete_turn(state, response)
+
+    def _run_planning(self, state: AgentState, response: AgentResponse) -> None:
+        """Run search + deterministic decision, persisting the outcome.
+
+        Planning only runs once requirements are complete and only when a search
+        provider and decision engine are wired in. Any failure is represented
+        explicitly on the recommendation; it is never disguised as success and
+        never produces an unhandled error.
+        """
+        if (
+            self._search_provider is None
+            or self._decision_engine is None
+            or state.requirements is None
+        ):
+            return
+
+        request = SearchRequest(
+            workflow_id=state.workflow_id, requirements=state.requirements
+        )
+        try:
+            search_response = self._search_provider.search(request)
+        except SearchError as exc:
+            log.warning("Search provider unavailable: %s", exc.code)
+            self._record_planning_status(
+                state, response, RecommendationStatus.PROVIDER_UNAVAILABLE
+            )
+            return
+        except Exception:  # noqa: BLE001 - never let a provider bug 500 the turn
+            log.exception("Unexpected search provider failure")
+            self._record_planning_status(
+                state, response, RecommendationStatus.PROVIDER_UNAVAILABLE
+            )
+            return
+
+        state.search_results = list(search_response.results)
+        try:
+            recommendation = self._decision_engine.recommend(
+                RecommendationInput(
+                    workflow_id=state.workflow_id,
+                    requirements=state.requirements,
+                    candidates=[
+                        Candidate.from_search_result(result)
+                        for result in state.search_results
+                    ],
+                )
+            )
+        except Exception:  # noqa: BLE001 - never let a decision bug 500 the turn
+            log.exception("Decision engine failure")
+            self._record_planning_status(
+                state, response, RecommendationStatus.DECISION_ERROR
+            )
+            return
+
+        state.recommendation = recommendation
+        response.recommendation = recommendation
+
+    def _record_planning_status(
+        self,
+        state: AgentState,
+        response: AgentResponse,
+        status: RecommendationStatus,
+    ) -> None:
+        recommendation = Recommendation(workflow_id=state.workflow_id, status=status)
+        state.recommendation = recommendation
+        response.recommendation = recommendation
 
     def _complete_turn(self, state: AgentState, response: AgentResponse) -> AgentResponse:
         state.status = response.status

@@ -5,11 +5,13 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from app.decision.engine import Recommendation
 from app.models.travel_requirements import (
     ClarificationItem,
     ExtractionResult,
     TravelRequirements,
 )
+from app.tools.search import SearchResult
 
 
 def _utc_now() -> datetime:
@@ -78,5 +80,7 @@ class AgentState(BaseModel):
     last_extraction: ExtractionResult | None = None
     clarification: ClarificationState = Field(default_factory=ClarificationState)
     current_action: AgentAction | None = None
+    search_results: list[SearchResult] = Field(default_factory=list)
+    recommendation: Recommendation | None = None
     errors: list[WorkflowError] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=_utc_now)

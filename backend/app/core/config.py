@@ -45,10 +45,23 @@ DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
 # falls back automatically; `stub` is the credential-free default.
 SUPPORTED_LLM_PROVIDERS = ("stub", "gemini", "groq")
 
+# Supported bookable-inventory search providers. Selection is explicit and
+# never falls back automatically; `demo` is the credential-free default and its
+# results are always labelled synthetic/non-bookable.
+SUPPORTED_SEARCH_PROVIDERS = ("demo",)
+
 
 def llm_provider() -> str:
     """Selected LLM provider name (lower-cased). Defaults to ``stub``."""
     return os.getenv("LLM_PROVIDER", "stub").strip().lower() or "stub"
+
+
+def search_provider() -> str:
+    """Selected bookable-inventory search provider (lower-cased).
+
+    Defaults to ``demo`` (deterministic synthetic fixtures, never live).
+    """
+    return os.getenv("SEARCH_PROVIDER", "demo").strip().lower() or "demo"
 
 
 def gemini_key() -> str:

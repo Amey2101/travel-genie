@@ -14,7 +14,8 @@ from app.api.health import router as health_router
 from app.api.plan import router as plan_router
 from app.api.workflows import workflows_router
 from app.core import config
-from app.providers.factory import build_llm_client
+from app.decision.deterministic import DeterministicDecisionEngine
+from app.providers.factory import build_llm_client, build_search_provider
 from app.services.requirement_extraction import RequirementExtractionService
 from app.tools.discovery import DiscoveryProvider
 
@@ -57,7 +58,12 @@ async def lifespan(_: FastAPI):
 
 def _default_agent() -> TravelAgent:
     extraction = RequirementExtractionService(build_llm_client())
-    return TravelAgent(extraction=extraction, store=InMemoryWorkflowStore())
+    return TravelAgent(
+        extraction=extraction,
+        store=InMemoryWorkflowStore(),
+        search_provider=build_search_provider(),
+        decision_engine=DeterministicDecisionEngine(),
+    )
 
 
 def create_app(

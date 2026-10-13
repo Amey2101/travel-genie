@@ -9,10 +9,12 @@ observable instead of silently replaced. ``stub`` requires no credentials.
 from __future__ import annotations
 
 from app.core import config
+from app.providers.demo_search import DemoSearchProvider
 from app.providers.gemini_llm import GeminiLLMClient
 from app.providers.groq_llm import GroqLLMClient
 from app.providers.llm import LLMClient, LLMExtractionOutput
 from app.providers.stub_llm import StubLLMClient
+from app.tools.search import SearchProvider
 
 
 def build_llm_client(provider: str | None = None) -> LLMClient:
@@ -32,4 +34,21 @@ def build_llm_client(provider: str | None = None) -> LLMClient:
     raise ValueError(
         f"Unknown LLM_PROVIDER {name!r}. Choose one of "
         f"{', '.join(config.SUPPORTED_LLM_PROVIDERS)}."
+    )
+
+
+def build_search_provider(provider: str | None = None) -> SearchProvider:
+    """Build the configured bookable-inventory ``SearchProvider``.
+
+    Selection is explicit via ``SEARCH_PROVIDER`` and never falls back
+    automatically. The default ``demo`` provider returns deterministic synthetic
+    fixtures that are labelled ``source="demo"`` and non-bookable; it makes no
+    network calls and requires no credentials.
+    """
+    name = (provider or config.search_provider()).strip().lower()
+    if name == "demo":
+        return DemoSearchProvider()
+    raise ValueError(
+        f"Unknown SEARCH_PROVIDER {name!r}. Choose one of "
+        f"{', '.join(config.SUPPORTED_SEARCH_PROVIDERS)}."
     )
