@@ -10,7 +10,9 @@ Verified facts (re-investigate before relying on this file):
 - Agent layer (Milestone 4): `TravelAgent` orchestrator, typed `WorkflowStatus` state machine, deterministic `policy` (gap detection), approval security boundary (`app/agent/security.py`).
 - Contracts: `SearchProvider`, `DecisionEngine`, `ExecutionProvider` Protocol definitions (contracts only; no real providers).
 - Workflow API: `POST /workflows`, `POST /workflows/{id}/messages`, `GET /workflows/{id}`.
-- No real LLM provider (OpenRouter deferred), no travel providers, no execution, no MongoDB, no Android.
+- Foundation integration (Milestone 1): single app in `app/main.py` serves the static frontend (`backend/static/`, routes `/` and `/discover`, assets under `/static`); env config ported to `app/core/config.py` (`python-dotenv` runtime dep); unified `{"error": {...}}` envelope in `app/api/errors.py`; `GET /health` preserved and `GET /api/health` setup summary added; `POST /api/plan` is a `501 not_implemented` compatibility placeholder.
+- Discovery integration (Milestone 2): `DiscoveryProvider` protocol in `app/tools/discovery.py`; `SerpApiDiscoveryProvider` adapter in `app/providers/serpapi_discovery.py` (SerpApi Google Maps, `httpx` runtime dep); `GET /api/discover` (destination places/attractions, not bookable inventory) with validation, 503 `discovery_unavailable` when unconfigured, bounded timeouts, sanitized errors, http(s)-only result links. `SearchProvider` (bookable inventory) remains a contract only and is deliberately separate from discovery. Canonical config is repo-root `.env` (single source; shell exports win).
+- No real LLM provider (OpenRouter deferred), no bookable transport/accommodation inventory providers, no planning pipeline, no execution, no MongoDB, no Android.
 - `android/`, `docs/` are placeholders.
 - Remote is `https://github.com/Amey2101/travel-genie.git`, working on `main`.
 
