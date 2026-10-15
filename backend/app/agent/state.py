@@ -5,6 +5,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from app.decision.budget import BudgetEstimate
 from app.decision.engine import Recommendation
 from app.models.travel_requirements import (
     ClarificationItem,
@@ -82,5 +83,6 @@ class AgentState(BaseModel):
     current_action: AgentAction | None = None
     search_results: list[SearchResult] = Field(default_factory=list)
     recommendation: Recommendation | None = None
+    budget_estimate: BudgetEstimate | None = None
     errors: list[WorkflowError] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=_utc_now)

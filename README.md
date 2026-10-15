@@ -58,7 +58,7 @@ Endpoints:
 
 #### Frontend
 
-The static home page (`backend/static/app.js`) drives the `TravelAgent` workflow directly: it creates a workflow, submits the structured form to `/workflows/{id}/requirements`, renders clarification questions (answered with a deterministic form posting to `/workflows/{id}/clarifications`) and the returned recommendation, and labels synthetic demo results as non-bookable. It never fabricates prices, availability, itineraries or bookings, and it does not call `/api/plan`.
+The static home page (`backend/static/app.js`) drives the `TravelAgent` workflow directly: it creates a workflow, submits the structured form to `/workflows/{id}/requirements`, renders clarification questions (answered with a deterministic form posting to `/workflows/{id}/clarifications`) and the returned recommendation, renders the deterministic `budget_estimate` as a separate panel (per-category estimates, total, target comparison and suggestions, with an explicit "not verified prices or bookings" disclaimer), and labels synthetic demo results as non-bookable. It never fabricates prices, availability, itineraries or bookings, and it does not call `/api/plan`.
 
 ### Configuration
 
@@ -103,6 +103,24 @@ validated requirements
 
 There is **no real flight/hotel inventory provider and no booking** in this build. The demo provider exists only to exercise the pipeline locally and in tests; it can be replaced through the same `SearchProvider` interface. Provider selection is explicit and there is no automatic fallback to demo data after a live provider fails.
 
+### Budget estimation (deterministic, informational)
+
+Whenever the planning step returns a recommendation, `TravelAgent` runs a deterministic budget step on the **same** workflow (still one orchestrator) and exposes it as `AgentResponse.budget_estimate` / `AgentState.budget_estimate`. The estimate can therefore also accompany `no_results` / `no_feasible_options` outcomes; a provider or decision **exception** returns before this step and leaves no estimate.
+
+```
+recommendation (ok, no_results, or no_feasible_options)
+    -> budget_input_from_requirements(requirements, recommendation)
+    -> StyleBasedBudgetEstimator.estimate(input)
+    -> BudgetEstimate persisted on AgentState
+    -> returned as AgentResponse.budget_estimate (+ GET /workflows/{id})
+```
+
+- **Deterministic, no LLM, no network.** `app/decision/budget.py` adapts the teammate's rule-of-thumb `heuristic_lines` / `compute_budget` helpers (fixed per-style cost tables) into typed models. Identical input always yields identical output. Budget estimation is deliberately separate from ranking: it never influences filtering, scoring, approval, or execution.
+- **Estimates are not prices.** `estimated_total` is always the exact sum of the category lines. The `note` and `disclaimer` state explicitly that these are planning estimates, **not verified provider prices**, and that nothing has been booked.
+- **Budget semantics are preserved.** An approximate target (`budget.total` with `is_approximate=true`) is never treated as a hard ceiling; a hard maximum (`hard_constraints.max_budget`) is surfaced separately as `hard_max_budget`. An absent budget yields `target_budget=null` and an explicit reference-only note rather than a fabricated comparison.
+- **Provenance is explicit.** `transportation_source` is `heuristic` (a rule-of-thumb assumption) or `provider_verified` (only when a selected candidate's price is genuinely `source="verified"`). Synthetic demo prices are **never** reused as real fares. `budget_input_from_requirements` returns `None` when no meaningful estimate is possible (missing timing, traveller count, or an unsupported currency), and the estimate is then simply absent — never invented; unsupported currency codes are never treated as 1:1 with INR.
+- **Date/duration interpretation.** A concrete `date_range` is counted inclusively (return date is a travel day: `days = end - start + 1`, `nights = days - 1`); otherwise a stated `duration_days` is used (`nights = days - 1`). This is a deliberate estimator policy and does not change existing extraction/clarification semantics.
+
 ### Test
 
 ```bash
@@ -121,8 +139,9 @@ pytest
 - [x] Planning pipeline (validated requirements → search → deterministic recommendation), with an explicit synthetic demo `SearchProvider`
 - [x] Decision engine: deterministic hard-constraint filtering, ranking, explanations, typed outcomes
 - [x] Frontend/workflow integration: the home page drives `TravelAgent` via a deterministic structured-input adapter and renders real recommendations (`/api/plan` remains an unused 501 placeholder)
+- [x] Deterministic budget estimation integrated into the `TravelAgent` workflow and rendered as a separate estimate panel (clearly distinguished from verified prices)
 - [ ] Real bookable transport/accommodation inventory search (`SearchProvider`)
-- [ ] Itinerary generation and budget estimation (the rich `PlanResponse` UI was not integrated; only ranked options are shown)
+- [ ] Itinerary generation (only ranked options plus a budget estimate are shown)
 - [ ] Execution provider (booking, cancellation)
 - [ ] MongoDB persistence
 - [ ] Android client

@@ -77,6 +77,33 @@ class TestHomePageUsesWorkflow:
         assert resp.json()["error"]["code"] == "not_implemented"
 
 
+class TestBudgetPanelContract:
+    def test_app_js_renders_budget_estimate_fields(self, client: TestClient) -> None:
+        js = client.get("/static/app.js").text
+        for field in (
+            "body.budget_estimate",
+            "est.lines",
+            "est.estimated_total",
+            "est.target_budget",
+            "est.difference",
+            "est.suggestions",
+            "est.disclaimer",
+        ):
+            assert field in js
+
+    def test_app_js_states_estimates_are_not_verified_prices(
+        self, client: TestClient
+    ) -> None:
+        js = client.get("/static/app.js").text
+        assert "Estimate only" in js
+        assert "not verified prices" in js
+
+    def test_app_js_does_not_restore_old_plan_response(self, client: TestClient) -> None:
+        js = client.get("/static/app.js").text
+        assert "budget_lines" not in js
+        assert "PlanResponse" not in js
+
+
 class TestDiscoveryRemainsIntact:
     def test_discover_page_and_script_still_present(self, client: TestClient) -> None:
         assert client.get("/discover").status_code == 200

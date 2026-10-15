@@ -16,6 +16,10 @@ from app.agent.state import (
     WorkflowStatus,
 )
 from app.agent.store import WorkflowStore
+from app.decision.budget import (
+    BudgetEstimator,
+    budget_input_from_requirements,
+)
 from app.decision.engine import (
     Candidate,
     DecisionEngine,
@@ -93,11 +97,13 @@ class TravelAgent:
         store: WorkflowStore,
         search_provider: SearchProvider | None = None,
         decision_engine: DecisionEngine | None = None,
+        budget_estimator: BudgetEstimator | None = None,
     ) -> None:
         self._extraction = extraction
         self._store = store
         self._search_provider = search_provider
         self._decision_engine = decision_engine
+        self._budget_estimator = budget_estimator
 
     def create_workflow(self) -> str:
         workflow_id = uuid4().hex
@@ -198,6 +204,10 @@ class TravelAgent:
         ):
             return
 
+        # A new planning attempt always starts from a clean estimate so a failed
+        # turn can never leave a stale budget from a previous recommendation.
+        state.budget_estimate = None
+
         request = SearchRequest(
             workflow_id=state.workflow_id, requirements=state.requirements
         )
@@ -237,6 +247,35 @@ class TravelAgent:
 
         state.recommendation = recommendation
         response.recommendation = recommendation
+        self._run_budget_estimate(state, response)
+
+    def _run_budget_estimate(
+        self, state: AgentState, response: AgentResponse
+    ) -> None:
+        """Estimate a transparent budget from completed requirements.
+
+        Runs whenever the decision engine returns a ``Recommendation`` (including
+        ``no_results`` and ``no_feasible_options``); provider or decision
+        exceptions are recorded before this step and leave the estimate absent.
+        It is strictly informational: it never changes recommendation status,
+        filtering, scoring, approval, or execution. When no meaningful estimate
+        can be calculated the estimate is left absent rather than fabricated, and
+        a failing estimator is contained so it never breaks the turn.
+        """
+        if self._budget_estimator is None or state.requirements is None:
+            return
+        try:
+            estimator_input = budget_input_from_requirements(
+                state.requirements, state.recommendation
+            )
+            if estimator_input is None:
+                return
+            estimate = self._budget_estimator.estimate(estimator_input)
+        except Exception:  # noqa: BLE001 - never let estimation break a turn
+            log.exception("Budget estimation failure")
+            return
+        state.budget_estimate = estimate
+        response.budget_estimate = estimate
 
     def _record_planning_status(
         self,

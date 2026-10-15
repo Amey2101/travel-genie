@@ -269,6 +269,10 @@
       frag.appendChild(recommendationPanel(body.recommendation, body.requirements));
     }
 
+    if (body.budget_estimate) {
+      frag.appendChild(budgetPanel(body.budget_estimate, body.requirements));
+    }
+
     var again = h("button", { class: "btn", type: "button", text: "Plan another trip" });
     again.addEventListener("click", function () { workflowId = null; form.scrollIntoView({ behavior: "smooth" }); });
     frag.appendChild(h("div", { class: "again" }, again));
@@ -413,6 +417,66 @@
           h("span", { text: (r.reasons || []).map(titleCase).join(", ") }));
       })));
     }
+    return panel;
+  }
+
+  // Budget estimates are deterministic backend figures, explicitly not prices.
+  function budgetPanel(est, req) {
+    var currency = est.currency || (req && req.budget && req.budget.currency) || "INR";
+    var panel = h("div", { class: "panel" });
+
+    panel.appendChild(h("h2", { text: "Estimated budget" }));
+    panel.appendChild(h("p", { class: "notice" },
+      h("strong", { text: "Estimate only. " }),
+      h("span", { text: est.note || "Planning estimates, not verified prices." })));
+
+    var cards = h("div", { class: "money-cards" });
+    cards.appendChild(h("div", { class: "money" },
+      h("div", { class: "k", text: "Estimated total" }),
+      h("div", { class: "v", text: money(Number(est.estimated_total), currency) })));
+    if (est.target_budget != null) {
+      cards.appendChild(h("div", { class: "money" },
+        h("div", { class: "k", text: est.target_is_approximate ? "Your target (approximate)" : "Your target budget" }),
+        h("div", { class: "v", text: money(Number(est.target_budget), currency) })));
+    }
+    if (est.difference != null) {
+      var diff = Number(est.difference);
+      var within = !!est.within_target;
+      cards.appendChild(h("div", { class: "money " + (within ? "under" : "over") },
+        h("div", { class: "k", text: within ? "Under target by" : "Over target by" }),
+        h("div", { class: "v", text: money(Math.abs(diff), currency) })));
+    }
+    panel.appendChild(cards);
+
+    panel.appendChild(h("p", { class: "fine",
+      text: "Estimated per person: " + money(Number(est.per_person), currency) + "." }));
+
+    var lines = est.lines || [];
+    var max = lines.reduce(function (m, l) { return Math.max(m, Number(l.amount) || 0); }, 0) || 1;
+    panel.appendChild(h("h3", { text: "Estimated cost by category" }));
+    panel.appendChild(h("div", null, lines.map(function (l) {
+      var amount = Number(l.amount) || 0;
+      return h("div", { class: "cat" },
+        h("span", { text: l.label }),
+        h("span", { class: "bar" }, h("i", { style: "width:" + Math.round((amount / max) * 100) + "%" })),
+        h("span", { class: "amt", text: money(amount, currency) }));
+    })));
+
+    if (est.hard_max_budget != null) {
+      var exceeded = !!est.hard_max_exceeded;
+      panel.appendChild(h("p", { class: "fine",
+        text: (exceeded ? "Above" : "Within") + " your stated maximum budget of " + money(Number(est.hard_max_budget), currency) + "." }));
+    }
+
+    if (est.suggestions && est.suggestions.length) {
+      panel.appendChild(h("h3", { text: "Suggestions" }));
+      panel.appendChild(h("ul", { class: "suggest" }, est.suggestions.map(function (s) {
+        return h("li", { text: s });
+      })));
+    }
+
+    panel.appendChild(h("p", { class: "disclaimer",
+      text: est.disclaimer || "Estimates only, not verified prices or bookings." }));
     return panel;
   }
 
